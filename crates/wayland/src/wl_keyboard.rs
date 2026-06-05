@@ -113,7 +113,6 @@ impl WlKeyboard {
         } else {
             return None;
         };
-        println!("[wl_keyboard] {:?}", ev);
         Some(ev)
     }
 }

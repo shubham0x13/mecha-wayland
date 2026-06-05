@@ -127,7 +127,6 @@ impl WlPointer {
         } else {
             return None;
         };
-        println!("[wl_pointer] {:?}", ev);
         Some(ev)
     }
 }

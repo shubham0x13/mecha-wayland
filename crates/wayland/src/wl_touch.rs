@@ -105,7 +105,6 @@ impl WlTouch {
         } else {
             return None;
         };
-        println!("[wl_touch] {:?}", ev);
         Some(ev)
     }
 }

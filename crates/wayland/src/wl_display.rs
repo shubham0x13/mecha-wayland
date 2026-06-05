@@ -66,7 +66,7 @@ impl WlDisplay {
         } else {
             return None;
         };
-        println!("[wl_display] {:?}", ev);
+        // println!("[wl_display] {:?}", ev);
         Some(ev)
     }
 
@@ -80,9 +80,9 @@ impl WlDisplay {
             body: body.to_vec(),
         };
         if let Some(e) = parse::<proto::event::Error>(&raw) {
-            eprintln!("[wl_display] error code={} msg={}", e.code, e.message);
+            // eprintln!("[wl_display] error code={} msg={}", e.code, e.message);
         } else if let Some(e) = parse::<proto::event::DeleteId>(&raw) {
-            println!("[wl_display] delete_id {}", e.id);
+            // println!("[wl_display] delete_id {}", e.id);
         }
     }
 }

@@ -46,6 +46,15 @@ impl WlRegistry {
             .map(|(name, (_, ver))| (*name, *ver))
     }
 
+    pub fn find_all(&self, interface: &str) -> Vec<(u32, u32)> {
+        self.globals
+            .iter()
+            .filter(|(_, (i, _))| i == interface)
+            .map(|(name, (_, ver))| (*name, *ver))
+            .collect()
+    }
+
+
     pub fn bind(&self, name: u32, interface: &str, version: u32, new_id: u32) {
         send(
             &self.conn,
