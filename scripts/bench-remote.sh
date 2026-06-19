@@ -30,8 +30,8 @@ BENCH_DEVICE="${BENCH_DEVICE:?BENCH_DEVICE must be set (e.g. root@192.168.1.10)}
 BENCH_PASSWORD="${BENCH_PASSWORD:-}"
 BENCH_REMOTE_DIR="${BENCH_REMOTE_DIR:-/tmp/launcher-benches}"
 SSH_OPTS="${SSH_OPTS:-}"
-WAYLAND_DISPLAY_REMOTE="${WAYLAND_DISPLAY:-wayland-0}"
-XDG_RUNTIME_DIR_REMOTE="${XDG_RUNTIME_DIR:-/run/user/0}"
+WAYLAND_DISPLAY_REMOTE="${WAYLAND_DISPLAY:-wayland-1}"
+XDG_RUNTIME_DIR_REMOTE="${XDG_RUNTIME_DIR:-/run/user/1000}"
 
 # Wrap ssh/scp with sshpass when a password is provided.
 if [[ -n "${BENCH_PASSWORD}" ]]; then
@@ -54,7 +54,35 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "[bench-remote] Building benchmarks for ${TARGET} (--no-run)..."
 cd "${REPO_ROOT}"
+# cross 0.2.x mounts the project's .cargo/ directory into the container, so
+# .cargo/config.toml (which has `[unstable] build-std`) is visible inside too.
+# cross already ships a pre-built std for aarch64 — build-std on top of it
+# causes duplicate core/alloc lang items.  There is no env-var or per-target
+# way to suppress [unstable] keys in cargo.  We temporarily replace the config
+# with a stripped version (same linker/rustflags, no [unstable]), run cross,
+# then restore the original via an EXIT trap.
+_CARGO_CFG="${REPO_ROOT}/.cargo/config.toml"
+_CARGO_CFG_BAK="${REPO_ROOT}/.cargo/config.toml.cross-bak"
+cp "${_CARGO_CFG}" "${_CARGO_CFG_BAK}"
+# Write cross-safe config: keep linker + rustflags, drop [unstable] build-std.
+cat > "${_CARGO_CFG}" <<'CROSSCFG'
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-L", "/usr/lib/aarch64-linux-gnu"]
+CROSSCFG
+# Restore on any exit (success, error, signal).
+trap 'mv -f "${_CARGO_CFG_BAK}" "${_CARGO_CFG}" 2>/dev/null || true' EXIT
+
 cross bench --target "${TARGET}" --workspace --no-run
+
+# Restore immediately (trap also covers error paths).
+mv -f "${_CARGO_CFG_BAK}" "${_CARGO_CFG}"
+trap - EXIT
+
 
 # ── Step 2: Discover bench binaries ──────────────────────────────────────────
 # Filter to only the real Criterion entry points:
