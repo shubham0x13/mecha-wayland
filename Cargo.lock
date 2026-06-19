@@ -786,6 +786,8 @@ dependencies = [
  "anyhow",
  "app",
  "assets",
+ "criterion",
+ "glow",
  "interactivity",
  "io-ring",
  "libc",

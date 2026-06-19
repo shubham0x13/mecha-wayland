@@ -108,11 +108,12 @@ impl Surface {
         callback_map: &mut HashMap<u32, u32>,
         draw: impl FnOnce(&mut Renderer),
     ) {
+        self.dirty = true;
         if self.frame_callback_pending {
             self.dirty = true;
         } else if self.present(renderer, wayland, callback_map, draw) {
             self.frame_callback_pending = true;
-            self.dirty = false;
+            self.dirty = true;
         }
     }
 
@@ -127,10 +128,11 @@ impl Surface {
         draw: impl FnOnce(&mut Renderer),
     ) {
         self.frame_callback_pending = false;
+        self.dirty = true;
         if self.dirty {
             if self.present(renderer, wayland, callback_map, draw) {
                 self.frame_callback_pending = true;
-                self.dirty = false;
+                self.dirty = true;
             }
         }
     }

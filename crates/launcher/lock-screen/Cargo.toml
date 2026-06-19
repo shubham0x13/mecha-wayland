@@ -3,6 +3,14 @@ name = "lock-screen"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "lock_screen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lock-screen"
+path = "src/main.rs"
+
 [dependencies]
 app = { path = "../../app" }
 renderer = { path = "../../renderer" }
@@ -17,6 +25,15 @@ ui = { path = "../../ui" }
 
 taffy = { workspace = true }
 libc = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+glow = { workspace = true }
+
+[[bench]]
+name = "lock_screen"
+path = "benches/lock_screen.rs"
+harness = false
 
 [build-dependencies]
 anyhow = { workspace = true }
