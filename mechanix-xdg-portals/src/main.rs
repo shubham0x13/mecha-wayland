@@ -10,13 +10,14 @@ use window_manager::WindowManager;
 
 #[derive(State)]
 pub struct AppRoot {
-    dbus_monitor: DbusMonitor,
+    ring: Ring,
+    dbus_system: DbusConnection<SystemBus>,
+    dbus_session: DbusConnection<SessionBus>,
+    system_monitor: DbusMonitor<SystemBus>,
+    session_monitor: DbusMonitor<SessionBus>,
+    window_manager: WindowManager,
     backend: FileChooserBackend,
     bt_backend: BluetoothBackend,
-    window_manager: WindowManager,
-    dbus_session: DbusConnection<SessionBus>,
-    dbus_system: DbusConnection<SystemBus>,
-    ring: Ring,
 }
 
 pub fn main_poll_module<S>() -> impl RegisteredModule<AppRoot, S> {
@@ -30,30 +31,33 @@ fn main() {
     let ring = Ring::new(RingSettings::default());
     let dbus_system = DbusConnection::<SystemBus>::new(ring.proxy());
     let dbus_session = DbusConnection::<SessionBus>::new(ring.proxy());
-    let dbus_monitor = DbusMonitor::new(dbus_session.proxy());
+    let system_monitor = DbusMonitor::new(dbus_system.proxy());
+    let session_monitor = DbusMonitor::new(dbus_session.proxy());
+    let window_manager = WindowManager::new(ring.proxy());
     let backend = FileChooserBackend::new(dbus_session.proxy());
     let bt_backend = BluetoothBackend::new(dbus_system.proxy());
-    let window_manager = WindowManager::new(ring.proxy());
 
     let app_root = AppRoot {
+        ring,
+        dbus_system,
+        dbus_session,
+        system_monitor,
+        session_monitor,
+        window_manager,
         backend,
         bt_backend,
-        dbus_monitor,
-        window_manager,
-        dbus_session,
-        dbus_system,
-        ring,
     };
 
     let mut app = App::new(app_root)
+        .mount(io_ring::module())
         .mount(main_poll_module())
-        .mount(dbus_monitor_module())
-        .mount(filechooser_module())
-        .mount(bluetooth_module())
-        .mount(dbus_module::<SessionBus, _>())
         .mount(dbus_module::<SystemBus, _>())
+        .mount(dbus_module::<SessionBus, _>())
+        .mount(dbus_monitor_module::<SystemBus, _>())
+        .mount(dbus_monitor_module::<SessionBus, _>())
         .mount(window_manager::module())
-        .mount(io_ring::module());
+        .mount(filechooser_module())
+        .mount(bluetooth_module());
 
     println!("[main] Starting application event loop.");
     app.dispatch(&app::Start);
