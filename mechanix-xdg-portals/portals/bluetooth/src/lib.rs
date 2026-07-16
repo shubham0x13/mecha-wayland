@@ -1,8 +1,9 @@
-pub mod backend;
-pub mod dialog;
+mod backend;
+mod dialog;
+
+pub use backend::BluetoothBackend;
 
 use app::RegisteredModule;
-pub use backend::BluetoothBackend;
 
 pub fn bluetooth_module<S>() -> impl app::RegisteredModule<S, S>
 where

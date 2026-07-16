@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use app::{RegisteredModule, prelude::*};
@@ -11,9 +10,7 @@ use super::interface::{
     RegisterAgent, Release, RequestAuthorization, RequestConfirmation, RequestDefaultAgent,
     RequestPasskey, RequestPinCode,
 };
-use super::types::{
-    AgentCapability, BluetoothOutcome, BluetoothRequest, BluetoothResponse, BtCallId,
-};
+use super::types::{AgentCapability, BluetoothOutcome, BluetoothRequest, BluetoothResponse};
 
 pub const AGENT_CAPABILITY: AgentCapability = AgentCapability::DisplayYesNo;
 
@@ -22,8 +19,7 @@ pub struct BluetoothBackend {
     proxy: DbusProxy<SystemBus>,
     register_agent: Pending<RegisterAgent>,
     request_default_agent: Pending<RequestDefaultAgent>,
-    pending: HashMap<BtCallId, Rc<Message>>,
-    next_id: BtCallId,
+    pending: Option<Rc<Message>>,
 }
 
 impl BluetoothBackend {
@@ -32,8 +28,7 @@ impl BluetoothBackend {
             proxy,
             register_agent: Pending::new(),
             request_default_agent: Pending::new(),
-            pending: HashMap::new(),
-            next_id: 0,
+            pending: None,
         }
     }
 
@@ -43,61 +38,59 @@ impl BluetoothBackend {
             .call(&self.proxy, &(path, AGENT_CAPABILITY.to_string()), ());
     }
 
-    /// Allocate the next call-id.
-    fn next_call_id(&mut self) -> BtCallId {
-        let id = self.next_id;
-        self.next_id = self.next_id.wrapping_add(1);
-        id
+    fn stash_pending(&mut self, raw: &Rc<Message>) {
+        if let Some(old) = self.pending.take() {
+            self.proxy.reply_error(
+                &old,
+                "org.bluez.Error.Cancelled",
+                "superseded by new request",
+            );
+        }
+        self.pending = Some(Rc::clone(raw));
     }
 
-    /// Stash a raw message (for request variants) and return its call-id.
-    fn stash(&mut self, raw: &Rc<Message>) -> BtCallId {
-        let id = self.next_call_id();
-        self.pending.insert(id, Rc::clone(raw));
-        id
-    }
-
-    /// Complete a pending request. `Dismissed` is a no-op (display variants).
-    fn finish(&mut self, call_id: BtCallId, outcome: BluetoothOutcome) {
-        let Some(raw) = self.pending.remove(&call_id) else {
-            // Display-only dialogs or unknown ids — nothing to reply.
+    fn finish_dialog(&mut self, outcome: BluetoothOutcome) {
+        let Some(raw) = self.pending.take() else {
             return;
         };
         match outcome {
             BluetoothOutcome::Accepted => {
                 self.proxy.reply(&raw, &());
             }
-            BluetoothOutcome::Rejected | BluetoothOutcome::Dismissed => {
+            BluetoothOutcome::PinCode(ref pin) => {
+                self.proxy.reply(&raw, &pin.as_str());
+            }
+            BluetoothOutcome::Passkey(n) => {
+                self.proxy.reply(&raw, &n);
+            }
+            BluetoothOutcome::Rejected => {
                 self.proxy
                     .reply_error(&raw, "org.bluez.Error.Rejected", "rejected by user");
+            }
+            BluetoothOutcome::Dismissed => {
+                self.proxy
+                    .reply_error(&raw, "org.bluez.Error.Canceled", "dismissed by user");
             }
         }
     }
 
-    /// BlueZ sent Cancel — reject every stashed call and return their ids so
-    /// the UI module can close the corresponding windows.
-    fn cancel_all(&mut self) {
-        for (_, raw) in self.pending.drain() {
+    fn cancel(&mut self) {
+        if let Some(raw) = self.pending.take() {
             self.proxy
-                .reply_error(&raw, "org.bluez.Error.Cancelled", "cancelled by BlueZ");
+                .reply_error(&raw, "org.bluez.Error.Canceled", "cancelled by BlueZ");
         }
     }
 }
 
-// --- Module ------------------------------------------------------------------
-
 pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
     Module::<BluetoothBackend, _, _>::new()
-        // Bootstrap: register our agent with BlueZ on startup.
         .on(|s: &mut BluetoothBackend, _: &app::Start| s.bootstrap())
-        // UI reply → finish the stashed D-Bus call.
         .on(|s: &mut BluetoothBackend, resp: &BluetoothResponse| {
-            s.finish(resp.call_id, resp.outcome.clone());
+            s.finish_dialog(resp.outcome.clone());
         })
-        // D-Bus events from the system bus.
         .on(
             |s: &mut BluetoothBackend, ev: &DbusEvent<SystemBus>| -> Option<BluetoothRequest> {
-                // --- Connection lifecycle ------------------------------------
+                // Reconnect/Disconnect handler for dbus
                 match &ev.msg {
                     DbusMessage::Reconnected => {
                         println!("[bt] System bus reconnected. Re-registering agent...");
@@ -105,7 +98,7 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                         return None;
                     }
                     DbusMessage::Disconnected => {
-                        s.pending.clear();
+                        s.pending = None;
                         s.register_agent.clear();
                         s.request_default_agent.clear();
                         println!("[bt] System bus disconnected.");
@@ -114,8 +107,6 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                     _ => {}
                 }
 
-                // --- Outgoing call replies ------------------------------------
-
                 // RegisterAgent reply
                 if let Some((_, res)) = s.register_agent.resolve(&ev.msg) {
                     match res {
@@ -123,7 +114,6 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                             println!(
                                 "[bt] Agent registered at {AGENT_PATH} (cap={AGENT_CAPABILITY})"
                             );
-                            // Also request to be the default agent.
                             let path =
                                 OwnedObjectPath::try_from(AGENT_PATH).expect("valid agent path");
                             s.request_default_agent.call(&s.proxy, &(path,), ());
@@ -142,73 +132,66 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                     return None;
                 }
 
-                // --- Incoming Agent1 method calls from BlueZ -----------------
+                // Incoming Agent1 method calls from BlueZ
 
-                // Release — BlueZ is unregistering us.
+                // Release - BlueZ is unregistering us
                 if let Some(Ok(call)) = IncomingCall::<Release>::try_from(&ev.msg) {
                     call.respond(&s.proxy, &());
                     println!("[bt] Agent released by BlueZ.");
                     return None;
                 }
 
-                // DisplayPinCode — fire-and-forget; reply immediately.
+                // RequestPinCode - stash and ask the UI for keyboard input.
+                if let Some(Ok(call)) = IncomingCall::<RequestPinCode>::try_from(&ev.msg) {
+                    let (device,) = &call.args;
+                    println!("[bt] RequestPinCode: device={}", device.as_str());
+                    s.stash_pending(call.raw());
+                    return Some(BluetoothRequest::RequestPinCode {
+                        device: device.as_str().to_string(),
+                    });
+                }
+
+                // DisplayPinCode - fire-and-forget; reply immediately.
                 if let Some(Ok(call)) = IncomingCall::<DisplayPinCode>::try_from(&ev.msg) {
                     let (device, pincode) = &call.args;
-                    let call_id = s.next_call_id(); // NOT stashed; reply sent now
                     call.respond(&s.proxy, &());
                     return Some(BluetoothRequest::DisplayPinCode {
-                        call_id,
                         device: device.as_str().to_string(),
                         pincode: pincode.clone(),
+                    });
+                }
+
+                // RequestPasskey — stash and ask the UI for keyboard input.
+                if let Some(Ok(call)) = IncomingCall::<RequestPasskey>::try_from(&ev.msg) {
+                    let (device,) = &call.args;
+                    println!("[bt] RequestPasskey: device={}", device.as_str());
+                    s.stash_pending(call.raw());
+                    return Some(BluetoothRequest::RequestPasskey {
+                        device: device.as_str().to_string(),
                     });
                 }
 
                 // DisplayPasskey — fire-and-forget; reply immediately.
                 if let Some(Ok(call)) = IncomingCall::<DisplayPasskey>::try_from(&ev.msg) {
                     let (device, passkey, entered) = &call.args;
-                    let call_id = s.next_call_id();
                     call.respond(&s.proxy, &());
                     return Some(BluetoothRequest::DisplayPasskey {
-                        call_id,
                         device: device.as_str().to_string(),
                         passkey: *passkey,
                         entered: *entered,
                     });
                 }
 
-                // RequestPinCode — reject (no text-input widget yet).
-                if let Some(Ok(call)) = IncomingCall::<RequestPinCode>::try_from(&ev.msg) {
-                    eprintln!("[bt] RequestPinCode: rejecting (PIN input not supported).");
-                    call.error(
-                        &s.proxy,
-                        "org.bluez.Error.Rejected",
-                        "PIN input not supported",
-                    );
-                    return None;
-                }
-
-                // RequestPasskey — reject (no text-input widget yet).
-                if let Some(Ok(call)) = IncomingCall::<RequestPasskey>::try_from(&ev.msg) {
-                    eprintln!("[bt] RequestPasskey: rejecting (passkey input not supported).");
-                    call.error(
-                        &s.proxy,
-                        "org.bluez.Error.Rejected",
-                        "passkey input not supported",
-                    );
-                    return None;
-                }
-
                 // RequestConfirmation — stash and ask the UI.
                 if let Some(Ok(call)) = IncomingCall::<RequestConfirmation>::try_from(&ev.msg) {
                     let (device, passkey) = &call.args;
-                    let call_id = s.stash(call.raw());
                     println!(
                         "[bt] RequestConfirmation: device={} passkey={}",
                         device.as_str(),
                         passkey
                     );
+                    s.stash_pending(call.raw());
                     return Some(BluetoothRequest::RequestConfirmation {
-                        call_id,
                         device: device.as_str().to_string(),
                         passkey: *passkey,
                     });
@@ -217,10 +200,9 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                 // RequestAuthorization — stash and ask the UI.
                 if let Some(Ok(call)) = IncomingCall::<RequestAuthorization>::try_from(&ev.msg) {
                     let (device,) = &call.args;
-                    let call_id = s.stash(call.raw());
                     println!("[bt] RequestAuthorization: device={}", device.as_str());
+                    s.stash_pending(call.raw());
                     return Some(BluetoothRequest::RequestAuthorization {
-                        call_id,
                         device: device.as_str().to_string(),
                     });
                 }
@@ -228,23 +210,22 @@ pub fn bluetooth_module<S>() -> impl RegisteredModule<BluetoothBackend, S> {
                 // AuthorizeService — stash and ask the UI.
                 if let Some(Ok(call)) = IncomingCall::<AuthorizeService>::try_from(&ev.msg) {
                     let (device, uuid) = &call.args;
-                    let call_id = s.stash(call.raw());
                     println!(
                         "[bt] AuthorizeService: device={} uuid={}",
                         device.as_str(),
                         uuid
                     );
+                    s.stash_pending(call.raw());
                     return Some(BluetoothRequest::AuthorizeService {
-                        call_id,
                         device: device.as_str().to_string(),
                         uuid: uuid.clone(),
                     });
                 }
 
-                // Cancel — BlueZ is dismissing everything.
+                // Cancel — BlueZ is dismissing the current request.
                 if let Some(Ok(call)) = IncomingCall::<Cancel>::try_from(&ev.msg) {
                     call.respond(&s.proxy, &());
-                    s.cancel_all();
+                    s.cancel();
                     return Some(BluetoothRequest::Cancel);
                 }
 

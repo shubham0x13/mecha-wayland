@@ -1,9 +1,8 @@
 mod dialog;
 mod types;
 
-use crate::backend::{BluetoothRequest, BluetoothResponse, BtCallId};
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use crate::backend::{BluetoothRequest, BluetoothResponse};
+use std::cell::Cell;
 use window_manager::{WindowId, WindowKind, WindowManager, WindowSettings};
 
 pub use dialog::BluetoothDialogUi;
@@ -15,9 +14,9 @@ thread_local! {
     /// Set by the dialog widget when the user acts; drained each Poll tick.
     pub static PENDING_BT_RESPONSE: Cell<Option<BluetoothResponse>> =
         const { Cell::new(None) };
-    /// Maps BtCallId → WindowId so we can close the right window.
-    pub static ACTIVE_BT_WINDOWS: RefCell<HashMap<BtCallId, WindowId>> =
-        RefCell::new(HashMap::new());
+    /// The single active Bluetooth dialog window, if any.
+    pub static ACTIVE_BT_WINDOW: Cell<Option<WindowId>> =
+        const { Cell::new(None) };
 }
 
 // --- Coordinator module ------------------------------------------------------
@@ -30,14 +29,13 @@ where
 {
     app::Module::<WindowManager, _, _>::new()
         .on(|wm: &mut WindowManager, req: &BluetoothRequest| {
-            // Cancel: close every open bluetooth dialog.
+            // Cancel: close the open bluetooth dialog (if any).
             if let BluetoothRequest::Cancel = req {
-                println!("[bt-ui] Cancel — closing all Bluetooth dialogs.");
-                ACTIVE_BT_WINDOWS.with(|wins| {
-                    for (_, id) in wins.borrow_mut().drain() {
-                        wm.destroy(id);
-                    }
-                });
+                println!("[bt-ui] Cancel — closing Bluetooth dialog.");
+                if let Some(id) = ACTIVE_BT_WINDOW.get() {
+                    wm.destroy(id);
+                    ACTIVE_BT_WINDOW.set(None);
+                }
                 return;
             }
 
@@ -46,14 +44,19 @@ where
                 return;
             };
 
+            // Close any existing dialog before opening a new one.
+            if let Some(old) = ACTIVE_BT_WINDOW.get() {
+                println!("[bt-ui] Replacing existing Bluetooth dialog.");
+                wm.destroy(old);
+                ACTIVE_BT_WINDOW.set(None);
+            }
+
             println!(
                 "[bt-ui] Spawning Bluetooth dialog (kind={:?}, device={}).",
                 args.kind, args.device
             );
 
-            let call_id = args.call_id;
             let title = format!("Bluetooth — {}", args.device);
-
             let id = wm.spawn_window(
                 WindowSettings {
                     width: 640,
@@ -63,26 +66,24 @@ where
                     touch_config: None,
                     gesture_config: None,
                 },
-                BluetoothDialogUi::new(call_id, &args.device, &args.kind),
+                BluetoothDialogUi::new(&args.device, &args.kind),
             );
 
-            ACTIVE_BT_WINDOWS.with(|wins| {
-                wins.borrow_mut().insert(call_id, id);
-            });
+            ACTIVE_BT_WINDOW.set(Some(id));
             wm.flush_pending();
         })
         .on(
             |wm: &mut WindowManager, _: &app::Poll| -> Option<BluetoothResponse> {
                 let done = PENDING_BT_RESPONSE.take();
-                if let Some(ref done) = done {
-                    // Close the window that produced this response.
-                    let id = ACTIVE_BT_WINDOWS.with(|wins| wins.borrow_mut().remove(&done.call_id));
-                    if let Some(id) = id {
+                if done.is_some() {
+                    // Close the dialog window that produced this response.
+                    if let Some(id) = ACTIVE_BT_WINDOW.get() {
                         println!(
-                            "[bt-ui] Dialog done (call_id={}, outcome={:?}). Closing window.",
-                            done.call_id, done.outcome
+                            "[bt-ui] Dialog done (outcome={:?}). Closing window.",
+                            done.as_ref().map(|r| &r.outcome)
                         );
                         wm.destroy(id);
+                        ACTIVE_BT_WINDOW.set(None);
                     }
                 }
                 done

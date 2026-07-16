@@ -1,4 +1,4 @@
-use crate::backend::{BluetoothOutcome, BluetoothResponse, BtCallId};
+use crate::backend::{BluetoothOutcome, BluetoothResponse};
 use assets::BakedFont;
 use interactivity::InteractivityState;
 use taffy::prelude::*;
@@ -49,7 +49,6 @@ enum Layout {
 }
 
 pub struct BluetoothDialogUi {
-    call_id: BtCallId,
     is_display: bool,
     layout: Layout,
     primary_rect: utils::Rect,
@@ -57,7 +56,7 @@ pub struct BluetoothDialogUi {
 }
 
 impl BluetoothDialogUi {
-    pub fn new(call_id: BtCallId, device: &str, kind: &DialogKind) -> Self {
+    pub fn new(device: &str, kind: &DialogKind) -> Self {
         let font_24 = &atlas::UI_FONT_INTER_24;
         let font_16 = &atlas::UI_FONT_INTER_16;
 
@@ -71,7 +70,6 @@ impl BluetoothDialogUi {
         if is_display {
             let layout = make_display_root(font_24, font_16, &title, &subtitle, &body);
             Self {
-                call_id,
                 is_display: true,
                 layout: Layout::Display(layout),
                 primary_rect: utils::Rect::ZERO,
@@ -92,7 +90,6 @@ impl BluetoothDialogUi {
                 secondary_label,
             );
             Self {
-                call_id,
                 is_display: false,
                 layout: Layout::Confirm(layout),
                 primary_rect: utils::Rect::ZERO,
@@ -153,10 +150,7 @@ impl WidgetList for BluetoothDialogUi {
             } else {
                 BluetoothOutcome::Accepted
             };
-            PENDING_BT_RESPONSE.set(Some(BluetoothResponse {
-                call_id: self.call_id,
-                outcome,
-            }));
+            PENDING_BT_RESPONSE.set(Some(BluetoothResponse { outcome }));
             return true;
         }
         // Secondary button: Reject (confirm dialogs only)
@@ -165,7 +159,6 @@ impl WidgetList for BluetoothDialogUi {
             && interactivity.is_clicked(self.secondary_rect)
         {
             PENDING_BT_RESPONSE.set(Some(BluetoothResponse {
-                call_id: self.call_id,
                 outcome: BluetoothOutcome::Rejected,
             }));
             return true;
@@ -223,6 +216,16 @@ fn make_strings(device: &str, kind: &DialogKind) -> (String, String, String) {
             "Bluetooth Service".into(),
             format!("Device: {dev}"),
             format!("Allow service:\n{uuid}"),
+        ),
+        DialogKind::RequestPinCode => (
+            "Bluetooth Pairing".into(),
+            format!("Device: {dev}"),
+            "Enter PIN code:".into(),
+        ),
+        DialogKind::RequestPasskey => (
+            "Bluetooth Pairing".into(),
+            format!("Device: {dev}"),
+            "Enter passkey (0–999999):".into(),
         ),
     }
 }
