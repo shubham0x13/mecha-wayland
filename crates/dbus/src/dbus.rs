@@ -289,4 +289,9 @@ impl<M: DbusHandler> IncomingCall<M> {
     pub fn error<B: Bus>(&self, proxy: &DbusProxy<B>, name: &str, text: &str) -> u32 {
         proxy.reply_error(&self.raw, name, text)
     }
+
+    /// Get raw message for this call
+    pub fn raw(&self) -> &Rc<Message> {
+        &self.raw
+    }
 }

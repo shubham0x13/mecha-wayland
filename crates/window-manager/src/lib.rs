@@ -130,7 +130,7 @@ impl WindowManager {
         }
     }
 
-    fn flush_pending(&mut self) {
+    pub fn flush_pending(&mut self) {
         let pending = std::mem::take(&mut self.pending);
         for (settings, mut window) in pending {
             let WindowSettings {

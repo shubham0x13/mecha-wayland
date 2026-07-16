@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    ".",
+    "portal-core",
+    "portals/bluetooth",
+    "portals/file-chooser",
+]
+
+[workspace.dependencies]
+app = { path = "../crates/app" }
+io-ring = { path = "../crates/io-ring" }
+window-manager = { path = "../crates/window-manager" }
+ui = { path = "../crates/ui" }
+utils = { path = "../crates/utils" }
+interactivity = { path = "../crates/interactivity" }
+assets = { path = "../crates/assets" }
+dbus = { path = "../crates/dbus" }
+zbus = { version = "5.16.0", features = ["bus-impl"] }
+taffy = "0.10.1"
+serde = { version = "1", features = ["derive"] }
+
+[package]
+name = "mechanix-xdg-portals"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+app = { workspace = true }
+io-ring = { workspace = true }
+window-manager = { workspace = true }
+dbus = { workspace = true }
+portal-core = { path = "portal-core" }
+bluetooth = { path = "portals/bluetooth" }
+file-chooser = { path = "portals/file-chooser" }
