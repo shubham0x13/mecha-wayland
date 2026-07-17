@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use app::{prelude::*, RegisteredModule};
-use dbus::{fdo, variant, DbusEvent, DbusMessage, DbusProxy, IncomingCall, Pending, SessionBus};
+use app::{RegisteredModule, prelude::*};
+use dbus::{DbusEvent, DbusMessage, DbusProxy, IncomingCall, Pending, SessionBus, fdo, variant};
 use zbus::message::Message;
 
 use super::interface::{
-    FileChooser, OpenFile, SaveFile, SaveFiles, FILECHOOSER_IFACE, FILECHOOSER_VERSION,
+    FILECHOOSER_IFACE, FILECHOOSER_VERSION, FileChooser, OpenFile, SaveFile, SaveFiles,
 };
 use super::types::{
     FileChooserOutcome, FileChooserRequest, FileChooserResponse, FileChooserResults, RequestHandle,
 };
-use portal_core::{RequestClose, PORTAL_NAME, PORTAL_PATH, RESPONSE_CANCELLED, RESPONSE_SUCCESS};
+use portal_core::{PORTAL_NAME, PORTAL_PATH, RESPONSE_CANCELLED, RESPONSE_SUCCESS, RequestClose};
 
-// --- Backend state -----------------------------------------------------------
 #[derive(State)]
 pub struct FileChooserBackend {
     proxy: DbusProxy<SessionBus>,
@@ -40,6 +39,16 @@ impl FileChooserBackend {
         );
     }
 
+    fn stash_pending(
+        &mut self,
+        handle: &zbus::zvariant::OwnedObjectPath,
+        raw: &Rc<Message>,
+    ) -> RequestHandle {
+        let handle_str = handle.as_str().to_string();
+        self.pending.insert(handle_str.clone(), Rc::clone(raw));
+        handle_str
+    }
+
     fn finish_dialog(&mut self, handle: &str, outcome: FileChooserOutcome) {
         let Some(raw) = self.pending.remove(handle) else {
             return;
@@ -54,19 +63,8 @@ impl FileChooserBackend {
         };
         self.proxy.reply(&raw, &(response, results));
     }
-
-    fn stash_pending(
-        &mut self,
-        handle: &zbus::zvariant::OwnedObjectPath,
-        raw: &Rc<Message>,
-    ) -> RequestHandle {
-        let handle_str = handle.as_str().to_string();
-        self.pending.insert(handle_str.clone(), Rc::clone(raw));
-        handle_str
-    }
 }
 
-// --- Module registration -----------------------------------------------------
 pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
     Module::<FileChooserBackend, _, _>::new()
         .on(|s: &mut FileChooserBackend, _: &app::Start| s.bootstrap())
@@ -79,9 +77,7 @@ pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
              -> Option<FileChooserRequest> {
                 match &ev.msg {
                     DbusMessage::Reconnected => {
-                        println!(
-                            "FileChooser backend reconnected. Re-bootstrapping name ownership..."
-                        );
+                        println!("[file-chooser] session bus reconnected, re-bootstrapping");
                         s.bootstrap();
                         return None;
                     }
@@ -89,13 +85,13 @@ pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
                         s.pending.clear();
                         s.request_name.clear();
                         s.owned = false;
-                        println!("FileChooser backend disconnected from D-Bus.");
+                        println!("[file-chooser] session bus disconnected");
                         return None;
                     }
                     _ => {}
                 }
 
-                // RequestName reply.
+                // RequestName reply
                 if let Some((_, res)) = s.request_name.resolve(&ev.msg) {
                     match res {
                         Ok(code)
@@ -103,41 +99,48 @@ pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
                                 || code == fdo::REQUEST_NAME_ALREADY_OWNER =>
                         {
                             s.owned = true;
-                            println!("FileChooser backend serving {PORTAL_NAME}");
+                            println!("[file-chooser] serving {PORTAL_NAME}");
                         }
-                        Ok(code) => eprintln!("could not own {PORTAL_NAME} (code {code})"),
-                        Err(e) => eprintln!("RequestName failed: {e}"),
+                        Ok(code) => eprintln!("[file-chooser] could not own {PORTAL_NAME} (code {code})"),
+                        Err(e) => eprintln!("[file-chooser] RequestName failed: {e}"),
                     }
                     return None;
                 }
 
-                // OpenFile / SaveFile / SaveFiles -> open the dialog.
+                // OpenFile
                 if let Some(Ok(call)) = IncomingCall::<OpenFile>::try_from(&ev.msg) {
-                    let (handle, _app_id, _parent, title, options) = &call.args;
+                    let (handle, app_id, _parent, title, _options) = &call.args;
+                    println!("[file-chooser] OpenFile: app_id={app_id} title='{title}' handle={}", handle.as_str());
                     return Some(FileChooserRequest::OpenFile {
                         handle: s.stash_pending(handle, call.raw()),
                         title: title.clone(),
-                        options: options.clone(),
-                    });
-                }
-                if let Some(Ok(call)) = IncomingCall::<SaveFile>::try_from(&ev.msg) {
-                    let (handle, _app_id, _parent, title, options) = &call.args;
-                    return Some(FileChooserRequest::SaveFile {
-                        handle: s.stash_pending(handle, call.raw()),
-                        title: title.clone(),
-                        options: options.clone(),
-                    });
-                }
-                if let Some(Ok(call)) = IncomingCall::<SaveFiles>::try_from(&ev.msg) {
-                    let (handle, _app_id, _parent, title, options) = &call.args;
-                    return Some(FileChooserRequest::SaveFiles {
-                        handle: s.stash_pending(handle, call.raw()),
-                        title: title.clone(),
-                        options: options.clone(),
+                        options: _options.clone(),
                     });
                 }
 
-                // Request.Close -> cancel.
+                // SaveFile
+                if let Some(Ok(call)) = IncomingCall::<SaveFile>::try_from(&ev.msg) {
+                    let (handle, app_id, _parent, title, _options) = &call.args;
+                    println!("[file-chooser] SaveFile: app_id={app_id} title='{title}' handle={}", handle.as_str());
+                    return Some(FileChooserRequest::SaveFile {
+                        handle: s.stash_pending(handle, call.raw()),
+                        title: title.clone(),
+                        options: _options.clone(),
+                    });
+                }
+
+                // SaveFiles
+                if let Some(Ok(call)) = IncomingCall::<SaveFiles>::try_from(&ev.msg) {
+                    let (handle, app_id, _parent, title, _options) = &call.args;
+                    println!("[file-chooser] SaveFiles: app_id={app_id} title='{title}' handle={}", handle.as_str());
+                    return Some(FileChooserRequest::SaveFiles {
+                        handle: s.stash_pending(handle, call.raw()),
+                        title: title.clone(),
+                        options: _options.clone(),
+                    });
+                }
+
+                // Request.Close -> cancel
                 if let Some(Ok(call)) = IncomingCall::<RequestClose>::try_from(&ev.msg) {
                     call.respond(&s.proxy, &());
                     if let Some(handle) = &call.path {
@@ -148,7 +151,7 @@ pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
                     return None;
                 }
 
-                // Properties: read-only `version`.
+                // Properties: read-only `version`
                 if fdo::route_properties(
                     &s.proxy,
                     &ev.msg,
@@ -165,17 +168,23 @@ pub fn filechooser_module<S>() -> impl RegisteredModule<FileChooserBackend, S> {
                     return None;
                 }
 
-                // Standard interfaces (Peer.Ping / GetMachineId, Introspect).
+                // Standard interfaces
                 if FileChooser::handle_standard(&s.proxy, PORTAL_PATH, &ev.msg) {
                     return None;
                 }
 
-                // Fallback: unknown method on our portal object.
+                // Unknown method call
                 if let DbusMessage::Call(m) = &ev.msg {
                     if m.header().path().is_some_and(|p| p.as_str() == PORTAL_PATH) {
+                        eprintln!(
+                            "[file-chooser] unknown method: interface={:?} member={:?}",
+                            m.header().interface(),
+                            m.header().member()
+                        );
                         s.proxy.reply_unknown_method(m);
                     }
                 }
+
                 None
             },
         )
