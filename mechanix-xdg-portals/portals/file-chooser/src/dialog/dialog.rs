@@ -1,13 +1,11 @@
 use crate::backend::{FileChooserOutcome, FileChooserResponse, RequestHandle};
 use assets::BakedFont;
-use interactivity::InteractivityState;
 use taffy::prelude::*;
 use ui::widgets::{Div, Text};
-use ui::{Point, RenderCommand, Widget, WidgetList, WidgetTree};
+use ui::{EventCtx, Point, RenderCommand, Widget, WidgetList, WidgetTree};
 use utils::Color;
 
 use super::ChooserOptions;
-use super::PENDING_DIALOG;
 use portal_core::atlas;
 use portal_core::widgets::Button;
 
@@ -65,27 +63,24 @@ impl WidgetList for FileChooserUi {
         commands
     }
 
-    fn on_event(&mut self, interactivity: &InteractivityState, _tree: &mut WidgetTree) -> bool {
-        if self.choose_rect != utils::Rect::ZERO && interactivity.is_clicked(self.choose_rect) {
+    fn on_event(&mut self, ctx: &mut EventCtx) {
+        if self.choose_rect != utils::Rect::ZERO && ctx.interactivity().is_clicked(self.choose_rect) {
             println!("[ui] Choose File clicked.");
-            PENDING_DIALOG.set(Some(FileChooserResponse {
+            ctx.dispatch(FileChooserResponse {
                 handle: self.handle.clone(),
                 outcome: FileChooserOutcome::Selected(vec![
                     "file:///home/shubham/Desktop/selected_file.txt".to_string(),
                 ]),
-            }));
-            return true;
+            });
         } else if self.cancel_rect != utils::Rect::ZERO
-            && interactivity.is_clicked(self.cancel_rect)
+            && ctx.interactivity().is_clicked(self.cancel_rect)
         {
             println!("[ui] Cancel clicked.");
-            PENDING_DIALOG.set(Some(FileChooserResponse {
+            ctx.dispatch(FileChooserResponse {
                 handle: self.handle.clone(),
                 outcome: FileChooserOutcome::Cancelled,
-            }));
-            return true;
+            });
         }
-        false
     }
 
     fn wants_input(&self) -> bool {

@@ -1,12 +1,10 @@
 use crate::backend::{BluetoothOutcome, BluetoothResponse};
 use assets::BakedFont;
-use interactivity::InteractivityState;
 use taffy::prelude::*;
 use ui::widgets::{Div, Text};
-use ui::{Point, RenderCommand, Widget, WidgetList, WidgetTree};
+use ui::{EventCtx, Point, RenderCommand, Widget, WidgetList, WidgetTree};
 use utils::Color;
 
-use super::PENDING_BT_RESPONSE;
 use super::types::DialogKind;
 use portal_core::atlas;
 use portal_core::widgets::Button;
@@ -142,28 +140,23 @@ impl WidgetList for BluetoothDialogUi {
         commands
     }
 
-    fn on_event(&mut self, interactivity: &InteractivityState, _tree: &mut WidgetTree) -> bool {
+    fn on_event(&mut self, ctx: &mut EventCtx) {
         // Primary button: Dismiss (display) or Confirm/Allow (request)
-        if self.primary_rect != utils::Rect::ZERO && interactivity.is_clicked(self.primary_rect) {
+        if self.primary_rect != utils::Rect::ZERO && ctx.interactivity().is_clicked(self.primary_rect) {
             let outcome = if self.is_display {
                 BluetoothOutcome::Dismissed
             } else {
                 BluetoothOutcome::Accepted
             };
-            PENDING_BT_RESPONSE.set(Some(BluetoothResponse { outcome }));
-            return true;
-        }
-        // Secondary button: Reject (confirm dialogs only)
-        if !self.is_display
+            ctx.dispatch(BluetoothResponse { outcome });
+        } else if !self.is_display
             && self.secondary_rect != utils::Rect::ZERO
-            && interactivity.is_clicked(self.secondary_rect)
+            && ctx.interactivity().is_clicked(self.secondary_rect)
         {
-            PENDING_BT_RESPONSE.set(Some(BluetoothResponse {
+            ctx.dispatch(BluetoothResponse {
                 outcome: BluetoothOutcome::Rejected,
-            }));
-            return true;
+            });
         }
-        false
     }
 
     fn wants_input(&self) -> bool {
