@@ -211,6 +211,47 @@ impl Color {
         )
     }
 
+    /// Parse a hex colour string (`#RGB`, `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`,
+    /// with or without a leading `#`).
+    ///
+    /// # Panics
+    /// Panics at compile time (or runtime) on invalid characters or length.
+    pub const fn from_hex(hex: &str) -> Self {
+        /// Decode one hex nibble `'0'–'9' | 'a'–'f' | 'A'–'F'` → `0..=15`.
+        const fn nibble(b: u8) -> u8 {
+            match b {
+                b'0'..=b'9' => b - b'0',
+                b'a'..=b'f' => b - b'a' + 10,
+                b'A'..=b'F' => b - b'A' + 10,
+                _ => panic!("invalid hex digit"),
+            }
+        }
+        /// Combine two nibbles into one byte: `('f', 'a')` → `0xfa`.
+        const fn pair(hi: u8, lo: u8) -> u8 {
+            (nibble(hi) << 4) | nibble(lo)
+        }
+
+        let s = match hex.as_bytes() {
+            [b'#', rest @ ..] => rest,
+            s => s,
+        };
+
+        match *s {
+            [r, g, b] => Self::from_rgb8(nibble(r) * 17, nibble(g) * 17, nibble(b) * 17),
+            [r, g, b, a] => Self::from_rgba8(
+                nibble(r) * 17,
+                nibble(g) * 17,
+                nibble(b) * 17,
+                nibble(a) * 17,
+            ),
+            [r0, r1, g0, g1, b0, b1] => Self::from_rgb8(pair(r0, r1), pair(g0, g1), pair(b0, b1)),
+            [r0, r1, g0, g1, b0, b1, a0, a1] => {
+                Self::from_rgba8(pair(r0, r1), pair(g0, g1), pair(b0, b1), pair(a0, a1))
+            }
+            _ => panic!("invalid hex color length"),
+        }
+    }
+
     /// The same colour with `a` for its alpha.
     pub fn with_alpha(self, a: f32) -> Self {
         Self { a, ..self }
@@ -442,6 +483,21 @@ mod tests {
         assert_eq!(
             (size_of::<Corners<f32>>(), align_of::<Corners<f32>>()),
             (16, 4)
+        );
+    }
+
+    #[test]
+    fn color_from_hex() {
+        assert_eq!(Color::from_hex("#ff0000"), Color::rgb(1.0, 0.0, 0.0));
+        assert_eq!(Color::from_hex("00ff00"), Color::rgb(0.0, 1.0, 0.0));
+        assert_eq!(Color::from_hex("#00f"), Color::rgb(0.0, 0.0, 1.0));
+        assert_eq!(
+            Color::from_hex("#12345678"),
+            Color::from_rgba8(0x12, 0x34, 0x56, 0x78)
+        );
+        assert_eq!(
+            Color::from_hex("#abcd"),
+            Color::from_rgba8(0xaa, 0xbb, 0xcc, 0xdd)
         );
     }
 }
