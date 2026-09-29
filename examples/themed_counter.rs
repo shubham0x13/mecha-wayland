@@ -31,15 +31,13 @@ impl Widget for Button {
         let label = s.spawn(
             me,
             text(b.font, b.label)
-                .color(s.color(ColorRole::OnPrimaryContainer))
-                .size(18),
+                .size(18)
+                .color_role(ColorRole::OnPrimaryContainer),
         );
 
         s.on_theme(me, move |ctx| {
             let bg = ctx.color(ColorRole::PrimaryContainer);
-            let fg = ctx.color(ColorRole::OnPrimaryContainer);
             ctx.set_paint(Paint::Quad(Quad::new(bg).radius(6.0)));
-            ctx.at(label).unwrap().set_color(fg);
         });
 
         Button
@@ -65,16 +63,17 @@ impl Build for CounterBuilder {
 impl Widget for Counter {
     type Builder = CounterBuilder;
     fn build(b: CounterBuilder, me: Handle<Self>, s: &mut Spawner<'_, Self>) -> Self {
-        *s.component_mut::<LayoutStyle>(me).unwrap() =
-            LayoutStyle::default().column().center().fill().gap(px(12.0));
+        *s.component_mut::<LayoutStyle>(me).unwrap() = LayoutStyle::default()
+            .column()
+            .center()
+            .fill()
+            .gap(px(12.0));
         *s.component_mut::<Paint>(me).unwrap() =
             Paint::Quad(Quad::new(s.color(ColorRole::Surface)));
 
         let label = s.spawn(
             me,
-            text(b.font, "0")
-                .color(s.color(ColorRole::OnSurface))
-                .size(24),
+            text(b.font, "0").size(24).color_role(ColorRole::OnSurface),
         );
         let row = s.spawn(
             me,
@@ -106,9 +105,7 @@ impl Widget for Counter {
 
         s.on_theme(me, move |ctx| {
             let bg = ctx.color(ColorRole::Surface);
-            let fg = ctx.color(ColorRole::OnSurface);
             ctx.set_paint(Paint::Quad(Quad::new(bg)));
-            ctx.at(label).unwrap().set_color(fg);
         });
 
         Counter { count: 0 }

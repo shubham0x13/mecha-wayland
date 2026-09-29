@@ -62,7 +62,7 @@ pub use div::{Div, DivBuilder, DivContext, div};
 pub use icon::{Icon, IconBuilder, IconContext, icon};
 pub use image::{Image, ImageBuilder, ImageContext, image};
 pub use text::{
-    Text, TextAlign, TextBuilder, TextContext, TextDecoration, TextOverflow, TextWrap,
+    Text, TextAlign, TextBuilder, TextContext, TextDecoration, TextOverflow, TextTheme, TextWrap,
     VerticalTrim, text,
 };
 

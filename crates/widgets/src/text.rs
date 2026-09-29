@@ -6,6 +6,7 @@ use atlas::{Atlas, FontId};
 use geometry::{Color, Point, Size};
 use layout::{LayoutStyle, Measure};
 use paint::{MonochromeSprite, Paint, PaintContext};
+use theme::{ColorRole, TextVariant, ThemeReader, ext::SpawnerThemeExt};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -121,23 +122,59 @@ pub fn text(font: FontId, s: impl Into<String>) -> TextBuilder {
         decoration: TextDecoration::None,
         wrap: TextWrap::NoWrap,
         max_lines: None,
+        theme: TextTheme::default(),
+    }
+}
+
+/// Theme bindings for [`Text`]. All fields are optional; unset fields fall
+/// back to the builder's explicit values. Set via [`TextBuilder::theme`] or
+/// the shorthand [`TextBuilder::color_role`] / [`TextBuilder::variant`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TextTheme {
+    /// Color for the text glyphs.
+    pub color_role: Option<ColorRole>,
+    /// Typography scale. Resolves `size`, `line_height`, `letter_spacing`.
+    pub variant: Option<TextVariant>,
+}
+
+impl TextTheme {
+    pub const fn new() -> Self {
+        Self {
+            color_role: None,
+            variant: None,
+        }
+    }
+
+    pub fn color_role(mut self, role: ColorRole) -> Self {
+        self.color_role = Some(role);
+        self
+    }
+
+    pub fn variant(mut self, variant: TextVariant) -> Self {
+        self.variant = Some(variant);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.color_role.is_none() && self.variant.is_none()
     }
 }
 
 pub struct TextBuilder {
-    font: FontId,
-    string: String,
-    style: LayoutStyle,
-    px: u16,
-    color: Color,
-    line_height: Option<f32>,
-    letter_spacing: Option<f32>,
-    vertical_trim: VerticalTrim,
-    align: TextAlign,
-    overflow: TextOverflow,
-    decoration: TextDecoration,
-    wrap: TextWrap,
-    max_lines: Option<usize>,
+    pub(crate) font: FontId,
+    pub(crate) string: String,
+    pub(crate) style: LayoutStyle,
+    pub(crate) px: u16,
+    pub(crate) color: Color,
+    pub(crate) line_height: Option<f32>,
+    pub(crate) letter_spacing: Option<f32>,
+    pub(crate) vertical_trim: VerticalTrim,
+    pub(crate) align: TextAlign,
+    pub(crate) overflow: TextOverflow,
+    pub(crate) decoration: TextDecoration,
+    pub(crate) wrap: TextWrap,
+    pub(crate) max_lines: Option<usize>,
+    pub(crate) theme: TextTheme,
 }
 
 impl TextBuilder {
@@ -151,10 +188,12 @@ impl TextBuilder {
     }
     pub fn size(mut self, px: u16) -> Self {
         self.px = px;
+        self.theme.variant = None;
         self
     }
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
+        self.theme.color_role = None;
         self
     }
     pub fn line_height(mut self, height: f32) -> Self {
@@ -189,6 +228,22 @@ impl TextBuilder {
         self.max_lines = Some(max_lines);
         self
     }
+
+    /// Apply theme bindings via a [`TextTheme`].
+    pub fn theme(mut self, theme: TextTheme) -> Self {
+        self.theme = theme;
+        self
+    }
+    /// Shorthand: set the theme color role for the glyph color.
+    pub fn color_role(mut self, role: ColorRole) -> Self {
+        self.theme.color_role = Some(role);
+        self
+    }
+    /// Shorthand: apply a typography variant.
+    pub fn variant(mut self, variant: TextVariant) -> Self {
+        self.theme.variant = Some(variant);
+        self
+    }
 }
 
 impl Build for TextBuilder {
@@ -198,20 +253,41 @@ impl Build for TextBuilder {
 impl Widget for Text {
     type Builder = TextBuilder;
     fn build(b: TextBuilder, me: Handle<Text>, s: &mut Spawner<'_, Text>) -> Text {
+        let color = s.resolve_color(b.theme.color_role, b.color);
+        let (px, line_height, letter_spacing) = s
+            .resolve_typography(b.theme.variant)
+            .map(|t| (t.font_size as u16, Some(t.line_height), Some(t.letter_spacing)))
+            .unwrap_or((b.px, b.line_height, b.letter_spacing));
+
         *s.component_mut::<LayoutStyle>(me).unwrap() = b.style;
         let (sprites, size) = {
             let mut atlas = s.resource_mut::<Atlas>();
-            shape(&mut atlas, b.font, b.px, &b.string, b.color)
+            shape(&mut atlas, b.font, px, &b.string, color)
         };
         *s.component_mut::<Paint>(me).unwrap() = Paint::Monochrome(sprites);
         *s.component_mut::<Measure>(me).unwrap() = Measure::fixed(size);
+
+        // Automatically subscribe to theme changes if any theme roles were set.
+        if !b.theme.is_empty() {
+            let theme = b.theme;
+            s.on_theme(me, move |ctx| {
+                if let Some(r) = theme.color_role {
+                    ctx.set_color(ctx.color(r));
+                }
+                if let Some(v) = theme.variant {
+                    let typo = ctx.typography(v);
+                    ctx.set_size(typo.font_size as u16);
+                }
+            });
+        }
+
         Text {
             font: b.font,
-            px: b.px,
-            color: b.color,
+            px,
+            color,
             string: b.string,
-            line_height: b.line_height,
-            letter_spacing: b.letter_spacing,
+            line_height,
+            letter_spacing,
             vertical_trim: b.vertical_trim,
             align: b.align,
             overflow: b.overflow,
