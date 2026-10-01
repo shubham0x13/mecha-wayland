@@ -1,59 +1,26 @@
 //! A counter that demonstrates theme-aware colors and runtime theme switching.
 //! Run under a Wayland session: `cargo run --example themed_counter`.
 
-use mecha_wayland::mechanix_widgets::prelude::{FontBook, TextContextExt, text};
+use atlas::{Bitmap, Class, SpriteId};
+use mecha_wayland::mechanix_widgets::prelude::{
+    ButtonVariant, FontBook, TextContextExt, button, text,
+};
 use mecha_wayland::prelude::*;
 use theme::{ColorRole, TextVariant};
 
-struct Button;
-
-fn button(label: impl Into<String>) -> ButtonBuilder {
-    ButtonBuilder {
-        label: label.into(),
-    }
-}
-
-struct ButtonBuilder {
-    label: String,
-}
-
-impl Build for ButtonBuilder {
-    type Widget = Button;
-}
-
-impl Widget for Button {
-    type Builder = ButtonBuilder;
-    fn build(b: ButtonBuilder, me: Handle<Self>, s: &mut Spawner<'_, Self>) -> Self {
-        *s.component_mut::<LayoutStyle>(me).unwrap() =
-            LayoutStyle::default().center().padding_all(px(12.0));
-        *s.component_mut::<Paint>(me).unwrap() =
-            Paint::Quad(Quad::new(s.color(ColorRole::PrimaryContainer)).radius(6.0));
-
-        let label = s.spawn(
-            me,
-            text(b.label)
-                .variant(TextVariant::LabelLarge)
-                .color(ColorRole::OnPrimaryContainer),
-        );
-
-        s.on_theme(me, move |ctx| {
-            let bg = ctx.color(ColorRole::PrimaryContainer);
-            ctx.set_paint(Paint::Quad(Quad::new(bg).radius(6.0)));
-        });
-
-        Button
-    }
-}
+const RESET_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>"#;
 
 struct Counter {
     count: i32,
 }
 
-fn counter() -> CounterBuilder {
-    CounterBuilder
+fn counter(reset_icon: SpriteId) -> CounterBuilder {
+    CounterBuilder { reset_icon }
 }
 
-struct CounterBuilder;
+struct CounterBuilder {
+    reset_icon: SpriteId,
+}
 
 impl Build for CounterBuilder {
     type Widget = Counter;
@@ -81,8 +48,17 @@ impl Widget for Counter {
             me,
             div().style(LayoutStyle::default().row().center().gap(px(8.0))),
         );
-        let minus = s.spawn(row, button("-"));
+        let minus = s.spawn(
+            row,
+            button("-").variant(ButtonVariant::Filled).focused(true),
+        );
         let plus = s.spawn(row, button("+"));
+        let reset = s.spawn(
+            row,
+            button("Reset")
+                .variant(ButtonVariant::Filled)
+                .icon(b.reset_icon),
+        );
         let toggle = s.spawn(me, button("Toggle Theme"));
 
         s.on::<Clicked>(minus, move |ctx, _| {
@@ -95,6 +71,11 @@ impl Widget for Counter {
             ctx.me().count += 1;
             let val = ctx.me().count;
             ctx.at(label).unwrap().set_text(val.to_string());
+        });
+
+        s.on::<Clicked>(reset, move |ctx, _| {
+            ctx.me().count = 0;
+            ctx.at(label).unwrap().set_text("0");
         });
 
         s.on::<Clicked>(toggle, move |ctx, _| {
@@ -117,6 +98,7 @@ impl Widget for Counter {
 struct Shell;
 struct ShellBuilder {
     root: NodeId,
+    reset_icon: SpriteId,
 }
 impl Build for ShellBuilder {
     type Widget = Shell;
@@ -128,10 +110,10 @@ impl Widget for Shell {
             b.root,
             window()
                 .title("themed counter")
-                .layout(LayoutStyle::default().center().size(px(240.0), px(180.0))),
+                .layout(LayoutStyle::default().center().size(px(300.0), px(200.0))),
         );
         s.on::<CloseRequested>(win, |ctx, _| ctx.signal(Stop));
-        s.spawn(win, counter());
+        s.spawn(win, counter(b.reset_icon));
         Shell
     }
 }
@@ -155,6 +137,12 @@ fn main() {
         .expect("Inter loads");
     app.insert_resource(FontBook::new(font));
 
+    let reset_bitmap = Bitmap::from_svg(RESET_ICON_SVG, 24).expect("SVG icon renders");
+    let reset_icon = app
+        .resource_mut::<Atlas>()
+        .insert(Class::Icon, &reset_bitmap)
+        .expect("insert reset icon");
+
     app.add_module(RingModule::default())
         .add_module(
             WaylandModule::new()
@@ -169,6 +157,6 @@ fn main() {
         });
 
     let root = app.root();
-    app.spawn(root, ShellBuilder { root });
+    app.spawn(root, ShellBuilder { root, reset_icon });
     app.run();
 }

@@ -15,11 +15,6 @@ impl ColorSource {
             Self::Role(role) => reader.color(role),
         }
     }
-
-    #[inline]
-    pub fn is_theme_role(&self) -> bool {
-        matches!(self, Self::Role(_))
-    }
 }
 
 impl From<Color> for ColorSource {
@@ -33,5 +28,19 @@ impl From<ColorRole> for ColorSource {
     #[inline]
     fn from(role: ColorRole) -> Self {
         Self::Role(role)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_conversions() {
+        let exact: ColorSource = Color::WHITE.into();
+        assert_eq!(exact, ColorSource::Exact(Color::WHITE));
+
+        let role: ColorSource = ColorRole::Primary.into();
+        assert_eq!(role, ColorSource::Role(ColorRole::Primary));
     }
 }
