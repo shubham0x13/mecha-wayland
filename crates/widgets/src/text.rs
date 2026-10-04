@@ -52,97 +52,104 @@ pub enum TextWrap {
     BreakAll, // or Char
 }
 
-pub struct Text {
-    font: FontId,
-    px: u16,
-    color: Color,
-    string: String,
-    line_height: Option<f32>,
-    letter_spacing: Option<f32>,
-    vertical_trim: VerticalTrim,
-    align: TextAlign,
-    overflow: TextOverflow,
-    decoration: TextDecoration,
-    wrap: TextWrap,
-    max_lines: Option<usize>,
+/// The configurable properties of a native text widget.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextProps {
+    pub font: FontId,
+    pub px: u16,
+    pub color: Color,
+    pub string: String,
+    pub line_height: Option<f32>,
+    pub letter_spacing: Option<f32>,
+    pub vertical_trim: VerticalTrim,
+    pub align: TextAlign,
+    pub overflow: TextOverflow,
+    pub decoration: TextDecoration,
+    pub wrap: TextWrap,
+    pub max_lines: Option<usize>,
 }
 
-impl Text {
-    pub fn text(&self) -> &str {
-        &self.string
+impl TextProps {
+    pub fn new(font: FontId, s: impl Into<String>) -> Self {
+        Self {
+            font,
+            string: s.into(),
+            px: 16,
+            color: Color::WHITE,
+            line_height: None,
+            letter_spacing: None,
+            vertical_trim: VerticalTrim::Normal,
+            align: TextAlign::Left,
+            overflow: TextOverflow::Clip,
+            decoration: TextDecoration::None,
+            wrap: TextWrap::NoWrap,
+            max_lines: None,
+        }
     }
-    pub fn font(&self) -> FontId {
-        self.font
+}
+
+pub struct Text {
+    pub props: TextProps,
+}
+
+impl std::ops::Deref for Text {
+    type Target = TextProps;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.props
     }
-    pub fn size(&self) -> u16 {
-        self.px
-    }
-    pub fn color(&self) -> Color {
-        self.color
-    }
-    pub fn line_height(&self) -> Option<f32> {
-        self.line_height
-    }
-    pub fn letter_spacing(&self) -> Option<f32> {
-        self.letter_spacing
-    }
-    pub fn vertical_trim(&self) -> VerticalTrim {
-        self.vertical_trim
-    }
-    pub fn align(&self) -> TextAlign {
-        self.align
-    }
-    pub fn overflow(&self) -> TextOverflow {
-        self.overflow
-    }
-    pub fn decoration(&self) -> TextDecoration {
-        self.decoration
-    }
-    pub fn wrap(&self) -> TextWrap {
-        self.wrap
-    }
-    pub fn max_lines(&self) -> Option<usize> {
-        self.max_lines
+}
+
+impl std::ops::DerefMut for Text {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.props
     }
 }
 
 pub fn text(font: FontId, s: impl Into<String>) -> TextBuilder {
     TextBuilder {
-        font,
-        string: s.into(),
+        props: TextProps::new(font, s),
         style: LayoutStyle::default(),
-        px: 16,
-        color: Color::WHITE,
-        line_height: None,
-        letter_spacing: None,
-        vertical_trim: VerticalTrim::Normal,
-        align: TextAlign::Left,
-        overflow: TextOverflow::Clip,
-        decoration: TextDecoration::None,
-        wrap: TextWrap::NoWrap,
-        max_lines: None,
     }
 }
 
+pub fn text_with_props(props: TextProps) -> TextBuilder {
+    TextBuilder::from_props(props)
+}
+
 pub struct TextBuilder {
-    pub(crate) font: FontId,
-    pub(crate) string: String,
-    pub(crate) style: LayoutStyle,
-    pub(crate) px: u16,
-    pub(crate) color: Color,
-    pub(crate) line_height: Option<f32>,
-    pub(crate) letter_spacing: Option<f32>,
-    pub(crate) vertical_trim: VerticalTrim,
-    pub(crate) align: TextAlign,
-    pub(crate) overflow: TextOverflow,
-    pub(crate) decoration: TextDecoration,
-    pub(crate) wrap: TextWrap,
-    pub(crate) max_lines: Option<usize>,
+    pub props: TextProps,
+    pub style: LayoutStyle,
+}
+
+impl std::ops::Deref for TextBuilder {
+    type Target = TextProps;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.props
+    }
+}
+
+impl std::ops::DerefMut for TextBuilder {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.props
+    }
 }
 
 impl TextBuilder {
+    pub fn from_props(props: TextProps) -> Self {
+        Self {
+            props,
+            style: LayoutStyle::default(),
+        }
+    }
+
     pub fn font(mut self, font: FontId) -> Self {
-        self.font = font;
+        self.props.font = font;
         self
     }
     pub fn style(mut self, style: LayoutStyle) -> Self {
@@ -150,43 +157,43 @@ impl TextBuilder {
         self
     }
     pub fn size(mut self, px: u16) -> Self {
-        self.px = px;
+        self.props.px = px;
         self
     }
     pub fn color(mut self, color: Color) -> Self {
-        self.color = color;
+        self.props.color = color;
         self
     }
     pub fn line_height(mut self, height: f32) -> Self {
-        self.line_height = Some(height);
+        self.props.line_height = Some(height);
         self
     }
     pub fn letter_spacing(mut self, spacing: f32) -> Self {
-        self.letter_spacing = Some(spacing);
+        self.props.letter_spacing = Some(spacing);
         self
     }
     pub fn vertical_trim(mut self, trim: VerticalTrim) -> Self {
-        self.vertical_trim = trim;
+        self.props.vertical_trim = trim;
         self
     }
     pub fn align(mut self, align: TextAlign) -> Self {
-        self.align = align;
+        self.props.align = align;
         self
     }
     pub fn overflow(mut self, overflow: TextOverflow) -> Self {
-        self.overflow = overflow;
+        self.props.overflow = overflow;
         self
     }
     pub fn decoration(mut self, decoration: TextDecoration) -> Self {
-        self.decoration = decoration;
+        self.props.decoration = decoration;
         self
     }
     pub fn wrap(mut self, wrap: TextWrap) -> Self {
-        self.wrap = wrap;
+        self.props.wrap = wrap;
         self
     }
     pub fn max_lines(mut self, max_lines: usize) -> Self {
-        self.max_lines = Some(max_lines);
+        self.props.max_lines = Some(max_lines);
         self
     }
 }
@@ -201,25 +208,12 @@ impl Widget for Text {
         *s.component_mut::<LayoutStyle>(me).unwrap() = b.style;
         let (sprites, size) = {
             let mut atlas = s.resource_mut::<Atlas>();
-            shape(&mut atlas, b.font, b.px, &b.string, b.color)
+            shape(&mut atlas, b.props.font, b.props.px, &b.props.string, b.props.color)
         };
         *s.component_mut::<Paint>(me).unwrap() = Paint::Monochrome(sprites);
         *s.component_mut::<Measure>(me).unwrap() = Measure::fixed(size);
 
-        Text {
-            font: b.font,
-            px: b.px,
-            color: b.color,
-            string: b.string,
-            line_height: b.line_height,
-            letter_spacing: b.letter_spacing,
-            vertical_trim: b.vertical_trim,
-            align: b.align,
-            overflow: b.overflow,
-            decoration: b.decoration,
-            wrap: b.wrap,
-            max_lines: b.max_lines,
-        }
+        Text { props: b.props }
     }
 }
 
@@ -276,64 +270,42 @@ pub trait TextContext {
 }
 
 impl TextContext for Context<'_, Text> {
+
     fn set_text(&mut self, text: impl Into<String>) {
         let text = text.into();
         if self.me().string == text {
             return;
         }
-        let (font, px, color) = {
-            let w = self.me();
-            (w.font, w.px, w.color)
-        };
-        let (sprites, size) = {
-            let mut atlas = self.resource_mut::<Atlas>();
-            shape(&mut atlas, font, px, &text, color)
-        };
-        self.set_paint(Paint::Monochrome(sprites));
-        *self.component_mut::<Measure>().unwrap() = Measure::fixed(size);
         self.me().string = text;
+        reshape_text(self);
     }
 
     fn set_size(&mut self, px: u16) {
         if self.me().px == px {
             return;
         }
-        let (font, color, string) = {
-            let w = self.me();
-            (w.font, w.color, w.string.clone())
-        };
-        let (sprites, size) = {
-            let mut atlas = self.resource_mut::<Atlas>();
-            shape(&mut atlas, font, px, &string, color)
-        };
-        self.set_paint(Paint::Monochrome(sprites));
-        *self.component_mut::<Measure>().unwrap() = Measure::fixed(size);
         self.me().px = px;
+        reshape_text(self);
     }
 
     fn set_color(&mut self, color: Color) {
         if self.me().color == color {
             return;
         }
-        let mut paint = self.paint().clone();
-        if let Paint::Monochrome(sprites) = &mut paint {
-            for sprite in sprites.iter_mut() {
-                sprite.color = color;
-            }
-        }
-        self.set_paint(paint);
         self.me().color = color;
+        retint_text(self, color);
     }
 
-    // Placeholder
     fn set_font(&mut self, font: FontId) {
         if self.me().font == font {
             return;
         }
         self.me().font = font;
+        reshape_text(self);
     }
 
-    // Placeholder
+    // TODO: apply line-height to the Measure component once multi-line
+    // shaping is supported.  Single-line text ignores this value at render time.
     fn set_line_height(&mut self, height: f32) {
         if self.me().line_height == Some(height) {
             return;
@@ -341,7 +313,9 @@ impl TextContext for Context<'_, Text> {
         self.me().line_height = Some(height);
     }
 
-    // Placeholder
+    // TODO: re-shape with per-glyph advance adjustment when letter-spacing
+    // is set.  Needs a modified `shape()` that adds `spacing` to each
+    // `g.advance`.  Deferred alongside `set_font`.
     fn set_letter_spacing(&mut self, spacing: f32) {
         if self.me().letter_spacing == Some(spacing) {
             return;
@@ -349,7 +323,8 @@ impl TextContext for Context<'_, Text> {
         self.me().letter_spacing = Some(spacing);
     }
 
-    // Placeholder
+    // TODO: adjust the Measure height to use cap-height instead of the full
+    // ascender when `VerticalTrim::CapHeight` is set.
     fn set_vertical_trim(&mut self, trim: VerticalTrim) {
         if self.me().vertical_trim == trim {
             return;
@@ -357,7 +332,9 @@ impl TextContext for Context<'_, Text> {
         self.me().vertical_trim = trim;
     }
 
-    // Placeholder
+    // TODO: horizontal alignment only matters for multi-line runs where
+    // individual lines are shorter than the container.  Implement once
+    // multi-line shaping lands.
     fn set_align(&mut self, align: TextAlign) {
         if self.me().align == align {
             return;
@@ -365,7 +342,8 @@ impl TextContext for Context<'_, Text> {
         self.me().align = align;
     }
 
-    // Placeholder
+    // TODO: apply clip / ellipsis at render time using the layout bounds
+    // once the renderer consults TextOverflow.
     fn set_overflow(&mut self, overflow: TextOverflow) {
         if self.me().overflow == overflow {
             return;
@@ -373,7 +351,8 @@ impl TextContext for Context<'_, Text> {
         self.me().overflow = overflow;
     }
 
-    // Placeholder
+    // TODO: draw underline / strikethrough rules as extra sprites in the
+    // paint list once the renderer supports it.
     fn set_decoration(&mut self, decoration: TextDecoration) {
         if self.me().decoration == decoration {
             return;
@@ -381,7 +360,8 @@ impl TextContext for Context<'_, Text> {
         self.me().decoration = decoration;
     }
 
-    // Placeholder
+    // TODO: requires multi-line text shaping — re-shape with line-break
+    // logic when wrap mode changes.
     fn set_wrap(&mut self, wrap: TextWrap) {
         if self.me().wrap == wrap {
             return;
@@ -389,13 +369,37 @@ impl TextContext for Context<'_, Text> {
         self.me().wrap = wrap;
     }
 
-    // Placeholder
+    // TODO: requires multi-line text shaping — truncate or clip when the
+    // shaped run exceeds `max_lines`.
     fn set_max_lines(&mut self, max_lines: Option<usize>) {
         if self.me().max_lines == max_lines {
             return;
         }
         self.me().max_lines = max_lines;
     }
+}
+
+fn reshape_text(ctx: &mut Context<'_, Text>) {
+    let (font, px, color, string) = {
+        let w = ctx.me();
+        (w.font, w.px, w.color, w.string.clone())
+    };
+    let (sprites, size) = {
+        let mut atlas = ctx.resource_mut::<Atlas>();
+        shape(&mut atlas, font, px, &string, color)
+    };
+    ctx.set_paint(Paint::Monochrome(sprites));
+    *ctx.component_mut::<Measure>().unwrap() = Measure::fixed(size);
+}
+
+fn retint_text(ctx: &mut Context<'_, Text>, color: Color) {
+    let mut paint = ctx.paint().clone();
+    if let Paint::Monochrome(sprites) = &mut paint {
+        for sprite in sprites.iter_mut() {
+            sprite.color = color;
+        }
+    }
+    ctx.set_paint(paint);
 }
 
 #[cfg(test)]

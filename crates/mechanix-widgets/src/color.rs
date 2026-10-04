@@ -31,16 +31,73 @@ impl From<ColorRole> for ColorSource {
     }
 }
 
+pub trait IntoColorSource {
+    fn into_color_source(self) -> Option<ColorSource>;
+}
+
+impl IntoColorSource for ColorSource {
+    #[inline]
+    fn into_color_source(self) -> Option<ColorSource> {
+        Some(self)
+    }
+}
+
+impl IntoColorSource for Color {
+    #[inline]
+    fn into_color_source(self) -> Option<ColorSource> {
+        Some(ColorSource::Exact(self))
+    }
+}
+
+impl IntoColorSource for ColorRole {
+    #[inline]
+    fn into_color_source(self) -> Option<ColorSource> {
+        Some(ColorSource::Role(self))
+    }
+}
+
+impl IntoColorSource for Option<ColorSource> {
+    #[inline]
+    fn into_color_source(self) -> Option<ColorSource> {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn from_conversions() {
-        let exact: ColorSource = Color::WHITE.into();
-        assert_eq!(exact, ColorSource::Exact(Color::WHITE));
+    fn to_source(val: impl IntoColorSource) -> Option<ColorSource> {
+        val.into_color_source()
+    }
 
-        let role: ColorSource = ColorRole::Primary.into();
-        assert_eq!(role, ColorSource::Role(ColorRole::Primary));
+    #[test]
+    fn conversions() {
+        assert_eq!(
+            ColorSource::from(Color::WHITE),
+            ColorSource::Exact(Color::WHITE)
+        );
+        assert_eq!(
+            ColorSource::from(ColorRole::Primary),
+            ColorSource::Role(ColorRole::Primary)
+        );
+
+        assert_eq!(
+            to_source(Color::WHITE),
+            Some(ColorSource::Exact(Color::WHITE))
+        );
+        assert_eq!(
+            to_source(ColorRole::Primary),
+            Some(ColorSource::Role(ColorRole::Primary))
+        );
+        assert_eq!(
+            to_source(ColorSource::Exact(Color::BLACK)),
+            Some(ColorSource::Exact(Color::BLACK))
+        );
+        assert_eq!(
+            to_source(Some(ColorSource::Role(ColorRole::Secondary))),
+            Some(ColorSource::Role(ColorRole::Secondary))
+        );
+        assert_eq!(to_source(None), None);
     }
 }

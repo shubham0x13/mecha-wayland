@@ -55,11 +55,26 @@ impl FontBook {
 
         match self.entries.binary_search_by_key(&w, |&(wt, _)| wt) {
             Ok(i) => self.entries[i].1,
-            Err(0) => self.entries[0].1,
-            Err(i) if i == self.entries.len() => self.entries.last().unwrap().1,
+            Err(0) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "FontBook: weight {w} is lighter than all registered faces; falling back to {}",
+                    self.entries[0].0
+                );
+                self.entries[0].1
+            }
+            Err(i) if i == self.entries.len() => {
+                let last = self.entries.last().unwrap();
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "FontBook: weight {w} is heavier than all registered faces; falling back to {}",
+                    last.0
+                );
+                last.1
+            }
             Err(i) => {
-                let lo_id = self.entries[i - 1].1;
-                let hi_id = self.entries[i].1;
+                let (_, lo_id) = self.entries[i - 1];
+                let (_, hi_id) = self.entries[i];
                 if w >= 400 { hi_id } else { lo_id }
             }
         }

@@ -1,23 +1,7 @@
+pub use widgets::WidgetState;
+
 use geometry::Color;
 use theme::{ColorRole, ColorScheme};
-
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum WidgetState {
-    #[default]
-    Enabled,
-    Hovered,
-    Focused,
-    Pressed,
-    Disabled,
-}
-
-impl WidgetState {
-    #[inline]
-    pub fn is_disabled(self) -> bool {
-        matches!(self, WidgetState::Disabled)
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StateLayer {
@@ -31,11 +15,17 @@ impl StateLayer {
         Self { role, opacity }
     }
 
+    /// Resolves this layer into an overlay [`Color`] using the given colour scheme.
     #[inline]
-    pub fn apply(self, base_color: Color, scheme: &ColorScheme) -> Color {
+    pub fn resolve(self, scheme: &ColorScheme) -> Color {
         let tint = self.role.resolve(scheme);
-        let overlay = Color::rgba(tint.r, tint.g, tint.b, self.opacity);
-        overlay.over(base_color)
+        Color::rgba(tint.r, tint.g, tint.b, self.opacity)
+    }
+
+    /// Blends this layer over `base_color` using the given colour scheme.
+    #[inline]
+    pub fn blend_over(self, base_color: Color, scheme: &ColorScheme) -> Color {
+        self.resolve(scheme).over(base_color)
     }
 }
 
@@ -44,16 +34,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn widget_state_disabled() {
-        assert!(!WidgetState::Enabled.is_disabled());
-        assert!(WidgetState::Disabled.is_disabled());
-    }
-
-    #[test]
-    fn state_layer_apply() {
+    fn blends_over_base_color() {
         let scheme = ColorScheme::baseline_dark();
         let layer = StateLayer::new(ColorRole::Primary, 0.08);
-        let blended = layer.apply(Color::BLACK, &scheme);
+        let blended = layer.blend_over(Color::BLACK, &scheme);
         assert_ne!(blended, Color::BLACK);
     }
 }

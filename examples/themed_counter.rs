@@ -3,7 +3,7 @@
 
 use atlas::{Bitmap, Class, SpriteId};
 use mecha_wayland::mechanix_widgets::prelude::{
-    ButtonVariant, FontBook, TextContextExt, button, text,
+    FontBook, TextContextExt, filled_button, outlined_button, text,
 };
 use mecha_wayland::prelude::*;
 use theme::{ColorRole, TextVariant};
@@ -48,18 +48,16 @@ impl Widget for Counter {
             me,
             div().style(LayoutStyle::default().row().center().gap(px(8.0))),
         );
-        let minus = s.spawn(
-            row,
-            button("-").variant(ButtonVariant::Filled).focused(true),
-        );
-        let plus = s.spawn(row, button("+"));
+        let minus = s.spawn(row, filled_button("-").focused(true));
+
+        let plus = s.spawn(row, filled_button("+"));
+
         let reset = s.spawn(
             row,
-            button("Reset")
-                .variant(ButtonVariant::Filled)
-                .icon(b.reset_icon),
+            filled_button("Reset").icon(b.reset_icon),
         );
-        let toggle = s.spawn(me, button("Toggle Theme"));
+
+        let toggle = s.spawn(me, outlined_button("Toggle Theme"));
 
         s.on::<Clicked>(minus, move |ctx, _| {
             ctx.me().count -= 1;
